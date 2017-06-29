@@ -76,7 +76,7 @@ spf_result = spf.check2(i=up_srv_ip, s=sender_address, h=up_srv_helo)
 spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=sender_address, smtp_helo=up_srv_helo, reason=spf_result[1])
 auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=[spf_res, iprev_result])
 
-sys.stdout.write(str(auth_res))
+sys.stdout.write(str(auth_res)+"\n")
 
 ### ARC SIGNATURE
 
