@@ -42,6 +42,8 @@ up_srv_ip = up_srv_ip_match.group(2)
 
 sender_address = os.getenv('SENDER')
 
+results_list = []
+
 ### REV IP LOOKUP
 
 iprev_res = "fail"
@@ -58,7 +60,7 @@ except:
     iprev_res = "temperror"
 
 iprev_result = authres.IPRevAuthenticationResult(result=iprev_res, policy_iprev=up_srv_ip, policy_iprev_comment=iprev_hn)
-
+results_list += [iprev_result]
 
 ### SPF CHECK
 
@@ -67,22 +69,26 @@ iprev_result = authres.IPRevAuthenticationResult(result=iprev_res, policy_iprev=
 #   by serpens.uberspace.de with SMTP; 23 Jun 2017 18:43:18 -0000
 
 spf_result = spf.check2(i=up_srv_ip, s=sender_address, h=up_srv_helo)
+spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=sender_address, smtp_helo=up_srv_helo, reason=spf_result[1])
+results_list += [spf_res]
 
 # Write Received-SPF header
 sys.stdout.write('Received-SPF: {} ({}) client-ip={} helo={} envelope-from={}'.format(spf_result[0], spf_result[1], up_srv_ip, up_srv_helo, sender_address)+"\n")
 
 
-### PREP AUTH RESULT
-spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=sender_address, smtp_helo=up_srv_helo, reason=spf_result[1])
-auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=[spf_res, iprev_result])
-
-sys.stdout.write(str(auth_res)+"\n")
-
 ### ARC SIGNATURE
 
 cv = dkim.CV_None
 if re.search('arc-seal', message, re.IGNORECASE):
-    cv = dkim.CV_Pass
+    arc_vrfy = dkim.arc_verify(message)
+    cv = arc_vrfy[0]
+    results_list += arc_vrfy[1]
+
+
+### PREP AUTH RESULT
+auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=results_list)
+
+sys.stdout.write(str(auth_res)+"\n")
 
 # parameters: message, selector, domain, privkey, auth_results, chain_validation_status
 sig = dkim.arc_sign(message, DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[24:], cv)
