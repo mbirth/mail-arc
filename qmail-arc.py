@@ -36,7 +36,7 @@ privkey = open('.dkim-privkey', 'rb').read()
 
 message = sys.stdin.read()
 
-up_srv_ip_match = re.search(r"Received: from .* \(HELO (.*)\) \(([0-9.]+)\).*by ", message, re.MULTILINE | re.DOTALL)
+up_srv_ip_match = re.search(r"Received: from .* \(HELO (.*)\) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
 up_srv_helo = up_srv_ip_match.group(1).lower()
 up_srv_ip = up_srv_ip_match.group(2)
 
@@ -73,7 +73,7 @@ spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=se
 results_list += [spf_res]
 
 # Write Received-SPF header
-sys.stdout.write('Received-SPF: {} ({}) client-ip={} helo={} envelope-from={}'.format(spf_result[0], spf_result[1], up_srv_ip, up_srv_helo, sender_address)+"\n")
+sys.stdout.write('Received-SPF: {0} ({1}) client-ip={2} helo={3} envelope-from={4}'.format(spf_result[0], spf_result[1], up_srv_ip, up_srv_helo, sender_address)+"\n")
 
 
 ### ARC SIGNATURE
@@ -95,5 +95,5 @@ sig = dkim.arc_sign(message, DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[
 
 for line in sig:
     sys.stdout.write(line)
-sys.exit(0)
+
 sys.stdout.write(message)
