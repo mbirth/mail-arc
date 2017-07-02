@@ -25,7 +25,7 @@ AUTHSERV_ID = "uberspace.de"   # domain or hostname of mail server
 DKIM_DOMAIN = "birth-online.de"
 DKIM_SELECTOR = "mbirth"
 
-# pylint: disable=C0103
+# pylint: disable=C0103,C0301
 
 if sys.version_info[0] >= 3:
     # Make sys.stdin and stdout binary streams.
@@ -45,13 +45,13 @@ sender_address = os.getenv('SENDER')
 ### REV IP LOOKUP
 
 iprev_res = "fail"
-iprev_hn  = "Lookup error"
+iprev_hn = "Lookup error"
 
 try:
     up_srv_hostn = socket.gethostbyaddr(up_srv_ip)
     if up_srv_helo == up_srv_hostn[0]:
         iprev_res = "pass"
-        iprev_hn  = up_srv_hostn[0]
+        iprev_hn = up_srv_hostn[0]
     else:
         iprev_res = "fail"
 except:
@@ -68,8 +68,8 @@ iprev_result = authres.IPRevAuthenticationResult(result=iprev_res, policy_iprev=
 
 spf_result = spf.check2(i=up_srv_ip, s=sender_address, h=up_srv_helo)
 
-# TODO: Received-SPF
-
+# Write Received-SPF header
+sys.stdout.write('Received-SPF: {} ({}) client-ip={} helo={} envelope-from={}'.format(spf_result[0], spf_result[1], up_srv_ip, up_srv_helo, sender_address)+"\n")
 
 
 ### PREP AUTH RESULT
