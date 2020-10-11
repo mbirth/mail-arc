@@ -35,14 +35,14 @@ if sys.version_info[0] >= 3:
 
 privkey = open('/home/mbirth/.dkim-privkey', 'rb').read()
 
-message = sys.stdin.read()
+message = sys.stdin.read().decode("utf-8")
 
 #up_srv_ip_match = re.search(r"Received: from .* \(HELO (.*)\) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
 up_srv_ip_match = re.search(r"Received: from (.*) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
 
 if not up_srv_ip_match:
     # Pass-thru message
-    sys.stdout.write(message)
+    sys.stdout.write(message.encode("utf-8"))
     sys.exit(0)
 
 up_srv_helo = up_srv_ip_match.group(1).lower()
@@ -81,7 +81,7 @@ spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=se
 results_list += [spf_res]
 
 # Write Received-SPF header (must be added ABOVE Received: lines for this server)
-sys.stdout.write('Received-SPF: {0} ({1}) receiver={2}; client-ip={3}; helo={4}; envelope-from={5};'.format(spf_result[0], spf_result[1], AUTHSERV_HOSTNAME, up_srv_ip, up_srv_helo, sender_address)+"\n")
+sys.stdout.write('Received-SPF: {0} ({1}) receiver={2}; client-ip={3}; helo={4}; envelope-from={5};'.format(spf_result[0], spf_result[1], AUTHSERV_HOSTNAME, up_srv_ip, up_srv_helo, sender_address).encode("utf-8")+b"\n")
 
 
 ### ARC SIGNATURE
@@ -89,23 +89,23 @@ sys.stdout.write('Received-SPF: {0} ({1}) receiver={2}; client-ip={3}; helo={4};
 try:
     cv = dkim.CV_None
     if re.search('arc-seal', message, re.IGNORECASE):
-        arc_vrfy = dkim.arc_verify(message)
+        arc_vrfy = dkim.arc_verify(message.encode("utf-8"))
         cv = arc_vrfy[0]
         results_list += arc_vrfy[1]
 
     ### PREP AUTH RESULT
     auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=results_list)
 
-    sys.stdout.write(str(auth_res)+"\n")
+    sys.stdout.write(str(auth_res).encode("utf-8")+b"\n")
 
     # parameters: message, selector, domain, privkey, auth_results, chain_validation_status
-    sig = dkim.arc_sign(message, DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[24:], cv)
+    sig = dkim.arc_sign(message.encode("utf-8"), DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[24:].encode("utf-8"), cv)
 
     for line in sig:
         sys.stdout.write(line)
-
 except:
-    sys.stdout.write("X-MTA-Error: qmail-arc failed ARC signing.\n")
+    sys.stdout.write("X-MTA-Error: qmail-arc failed ARC signing.".encode("utf-8")+b"\n")
+    pass
 
 #sys.exit(0)
-sys.stdout.write(message)
+sys.stdout.write(message.encode("utf-8"))
