@@ -37,8 +37,9 @@ privkey = open('/home/mbirth/.dkim-privkey', 'rb').read()
 
 message = sys.stdin.read().decode("utf-8")
 
-#up_srv_ip_match = re.search(r"Received: from .* \(HELO (.*)\) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
-up_srv_ip_match = re.search(r"Received: from (.*) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
+up_srv_ip_match = re.search(r"Received: from (.*?) \(.*? \[([0-9a-f.:]+)\].*by ", message, re.MULTILINE | re.DOTALL)
+
+#sys.stdout.write(repr(up_srv_ip_match).encode("utf-8"))
 
 if not up_srv_ip_match:
     # Pass-thru message
