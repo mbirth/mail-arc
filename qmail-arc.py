@@ -21,7 +21,8 @@ import authres
 import dkim
 import spf
 
-AUTHSERV_ID = "uberspace.de"   # domain or hostname of mail server
+AUTHSERV_ID = socket.getfqdn()   # domain or hostname of mail server
+AUTHSERV_HOSTNAME = socket.getfqdn()   # full hostname of mail server
 DKIM_DOMAIN = "birth-online.de"
 DKIM_SELECTOR = "mbirth"
 
@@ -32,11 +33,18 @@ if sys.version_info[0] >= 3:
     sys.stdin = sys.stdin.detach()
     sys.stdout = sys.stdout.detach()
 
-privkey = open('.dkim-privkey', 'rb').read()
+privkey = open('/home/mbirth/.dkim-privkey', 'rb').read()
 
 message = sys.stdin.read()
 
-up_srv_ip_match = re.search(r"Received: from .* \(HELO (.*)\) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
+#up_srv_ip_match = re.search(r"Received: from .* \(HELO (.*)\) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
+up_srv_ip_match = re.search(r"Received: from (.*) \(([0-9a-f.:]+)\).*by ", message, re.MULTILINE | re.DOTALL)
+
+if not up_srv_ip_match:
+    # Pass-thru message
+    sys.stdout.write(message)
+    sys.exit(0)
+
 up_srv_helo = up_srv_ip_match.group(1).lower()
 up_srv_ip = up_srv_ip_match.group(2)
 
@@ -72,28 +80,32 @@ spf_result = spf.check2(i=up_srv_ip, s=sender_address, h=up_srv_helo)
 spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=sender_address, smtp_helo=up_srv_helo, reason=spf_result[1])
 results_list += [spf_res]
 
-# Write Received-SPF header
-sys.stdout.write('Received-SPF: {0} ({1}) client-ip={2} helo={3} envelope-from={4}'.format(spf_result[0], spf_result[1], up_srv_ip, up_srv_helo, sender_address)+"\n")
+# Write Received-SPF header (must be added ABOVE Received: lines for this server)
+sys.stdout.write('Received-SPF: {0} ({1}) receiver={2}; client-ip={3}; helo={4}; envelope-from={5};'.format(spf_result[0], spf_result[1], AUTHSERV_HOSTNAME, up_srv_ip, up_srv_helo, sender_address)+"\n")
 
 
 ### ARC SIGNATURE
 
-cv = dkim.CV_None
-if re.search('arc-seal', message, re.IGNORECASE):
-    arc_vrfy = dkim.arc_verify(message)
-    cv = arc_vrfy[0]
-    results_list += arc_vrfy[1]
+try:
+    cv = dkim.CV_None
+    if re.search('arc-seal', message, re.IGNORECASE):
+        arc_vrfy = dkim.arc_verify(message)
+        cv = arc_vrfy[0]
+        results_list += arc_vrfy[1]
 
+    ### PREP AUTH RESULT
+    auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=results_list)
 
-### PREP AUTH RESULT
-auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=results_list)
+    sys.stdout.write(str(auth_res)+"\n")
 
-sys.stdout.write(str(auth_res)+"\n")
+    # parameters: message, selector, domain, privkey, auth_results, chain_validation_status
+    sig = dkim.arc_sign(message, DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[24:], cv)
 
-# parameters: message, selector, domain, privkey, auth_results, chain_validation_status
-sig = dkim.arc_sign(message, DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[24:], cv)
+    for line in sig:
+        sys.stdout.write(line)
 
-for line in sig:
-    sys.stdout.write(line)
+except:
+    sys.stdout.write("X-MTA-Error: qmail-arc failed ARC signing.\n")
 
+#sys.exit(0)
 sys.stdout.write(message)
