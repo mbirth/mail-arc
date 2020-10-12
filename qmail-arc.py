@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 """Qmail mail validator
 
 This is a script meant to be used in qmail before forwarding mail to e.g. Gmail. It will verify
@@ -18,13 +18,14 @@ import socket
 import sys
 
 import authres
+import authres.arc
 import dkim
 import spf
 
 AUTHSERV_ID = socket.getfqdn()   # domain or hostname of mail server
 AUTHSERV_HOSTNAME = socket.getfqdn()   # full hostname of mail server
-DKIM_DOMAIN = "birth-online.de"
-DKIM_SELECTOR = "mbirth"
+DKIM_DOMAIN = b"birth-online.de"
+DKIM_SELECTOR = b"mbirth"
 
 # pylint: disable=C0103,C0301
 
@@ -35,15 +36,21 @@ if sys.version_info[0] >= 3:
 
 privkey = open('/home/mbirth/.dkim-privkey', 'rb').read()
 
-message = sys.stdin.read().decode("utf-8")
+message = sys.stdin.read()
 
-up_srv_ip_match = re.search(r"Received: from (.*?) \(.*? \[([0-9a-f.:]+)\].*by ", message, re.MULTILINE | re.DOTALL)
+linesep = dkim.util.get_linesep(message)
+
+# Find this line:
+# Received: from unknown (sv3-smtp2.lithium.com [208.74.204.9])
+#   by eukelade.uberspace.de with SMTP; 23 Jun 2017 18:43:18 -0000
+
+up_srv_ip_match = re.search("Received: from (.*?) \(.*? \[([0-9a-f.:]+)\].*by ", message.decode("utf-8"), re.MULTILINE | re.DOTALL)
 
 #sys.stdout.write(repr(up_srv_ip_match).encode("utf-8"))
 
 if not up_srv_ip_match:
     # Pass-thru message
-    sys.stdout.write(message.encode("utf-8"))
+    sys.stdout.write(message)
     sys.exit(0)
 
 up_srv_helo = up_srv_ip_match.group(1).lower()
@@ -73,40 +80,47 @@ results_list += [iprev_result]
 
 ### SPF CHECK
 
-# Find this line:
-# Received: from unknown (HELO sv3-smtp2.lithium.com) (208.74.204.9)
-#   by serpens.uberspace.de with SMTP; 23 Jun 2017 18:43:18 -0000
-
 spf_result = spf.check2(i=up_srv_ip, s=sender_address, h=up_srv_helo)
 spf_res = authres.SPFAuthenticationResult(result=spf_result[0], smtp_mailfrom=sender_address, smtp_helo=up_srv_helo, reason=spf_result[1])
 results_list += [spf_res]
 
 # Write Received-SPF header (must be added ABOVE Received: lines for this server)
-sys.stdout.write('Received-SPF: {0} ({1}) receiver={2}; client-ip={3}; helo={4}; envelope-from={5};'.format(spf_result[0], spf_result[1], AUTHSERV_HOSTNAME, up_srv_ip, up_srv_helo, sender_address).encode("utf-8")+b"\n")
+sys.stdout.write('Received-SPF: {0} ({1}) receiver={2}; client-ip={3}; helo={4}; envelope-from={5};'.format(spf_result[0], spf_result[1], AUTHSERV_HOSTNAME, up_srv_ip, up_srv_helo, sender_address).encode("utf-8") + linesep)
 
 
 ### ARC SIGNATURE
+#import logging
+#logging.basicConfig(level=10)
+try:
+    cv = dkim.CV_None.decode("ascii")
+    if re.search(b'arc-seal', message, re.IGNORECASE):
+        arc_vrfy = dkim.arc_verify(message)
+        cv = arc_vrfy[0].decode("ascii")
+
+    arc_res = authres.arc.ARCAuthenticationResult(result=cv)
+    results_list += [arc_res]
+
+except Exception as e:
+    sys.stdout.write("X-MTA-Error: qmail-arc failed ARC verifying ({}).".format(e).encode("utf-8") + linesep)
+    #raise
+    pass
 
 try:
-    cv = dkim.CV_None
-    if re.search('arc-seal', message, re.IGNORECASE):
-        arc_vrfy = dkim.arc_verify(message.encode("utf-8"))
-        cv = arc_vrfy[0]
-        results_list += arc_vrfy[1]
-
     ### PREP AUTH RESULT
     auth_res = authres.AuthenticationResultsHeader(authserv_id=AUTHSERV_ID, results=results_list)
+    auth_res_str = str(auth_res).encode("utf-8") + linesep
 
-    sys.stdout.write(str(auth_res).encode("utf-8")+b"\n")
+    message = auth_res_str + message
 
-    # parameters: message, selector, domain, privkey, auth_results, chain_validation_status
-    sig = dkim.arc_sign(message.encode("utf-8"), DKIM_SELECTOR, DKIM_DOMAIN, privkey, str(auth_res)[24:].encode("utf-8"), cv)
-
+    # parameters: message, selector, domain, privkey, srv_id, signature_algorithm
+    sig = dkim.arc_sign(message, DKIM_SELECTOR, DKIM_DOMAIN, privkey, b"eukelade.uberspace.de")
+    #sys.stdout.write(repr(sig).encode("utf-8"))
     for line in sig:
         sys.stdout.write(line)
-except:
-    sys.stdout.write("X-MTA-Error: qmail-arc failed ARC signing.".encode("utf-8")+b"\n")
+except Exception as e:
+    sys.stdout.write("X-MTA-Error: qmail-arc failed ARC signing ({}).".format(e).encode("utf-8") + linesep)
+    #raise
     pass
 
 #sys.exit(0)
-sys.stdout.write(message.encode("utf-8"))
+sys.stdout.write(message)
